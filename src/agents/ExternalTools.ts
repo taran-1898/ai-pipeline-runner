@@ -10,7 +10,7 @@ import { config } from "../config/env";
 abstract class BaseTool implements AITool {
   abstract readonly name: string;
   protected abstract hasApiKey(): boolean;
-  abstract protected callProvider(input: string): Promise<string>;
+  protected abstract callProvider(input: string): Promise<string>;
 
   async invoke(input: string): Promise<string> {
     if (!this.hasApiKey()) {

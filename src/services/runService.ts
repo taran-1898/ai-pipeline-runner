@@ -1,6 +1,6 @@
 import { RunStatus } from "@prisma/client";
 import { prisma } from "../config/db";
-import { pipelineQueue } from "../config/queue";
+import { pipelineQueue, PipelineRunJobData } from "../config/queue";
 
 export class RunService {
   async startRun(pipelineId: string, input: unknown) {
