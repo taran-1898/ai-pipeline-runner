@@ -11,6 +11,8 @@ export interface PipelineDefinitionStep {
   stepType: StepType;
   task: string;
   promptTemplate: string;
+  schema?: unknown;
+  dependsOn?: string[];
 }
 
 export interface PipelineDefinition {

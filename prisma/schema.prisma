@@ -24,6 +24,8 @@ model PipelineStep {
   stepOrder     Int
   stepType      String
   promptTemplate String
+  schema        Json?
+  dependsOn     String[] @default([])
 
   runSteps RunStep[]
 
@@ -55,6 +57,10 @@ model RunStep {
   durationMs Int
   reviewStatus  String?
   reviewComments String?
+  validationErrors String?
+  status     String
+  startTime  DateTime
+  endTime    DateTime
 }
 
 enum RunStatus {

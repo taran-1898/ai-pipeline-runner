@@ -58,10 +58,11 @@ npm run worker
 
 ### Core API Endpoints
 
-- **POST** `/pipelines` – create a pipeline
+- **POST** `/pipelines` – create a pipeline (you can now attach per-step JSON Schemas and dependency information)
+- **POST** `/pipelines/plan` – generate and persist a pipeline from a natural-language task
 - **GET** `/pipelines` – list pipelines
-- **POST** `/pipelines/:id/run` – start a pipeline run (enqueues a job)
-- **GET** `/runs/:id` – get run status and execution trace (with steps)
+- **POST** `/pipelines/:id/run` – start a pipeline run (enqueues a job into the DAG executor)
+- **GET** `/runs/:id` – get run status and execution trace (with steps, including per-step status/timing/validation)
 
 # ai-pipeline-runner
 Multi-LLM workflow orchestration engine with task routing, agent pipelines, and validation layers.

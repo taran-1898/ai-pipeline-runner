@@ -12,6 +12,8 @@ export class PipelineService {
             stepOrder: index + 1,
             stepType: step.stepType,
             promptTemplate: step.promptTemplate,
+            schema: step.schema as any,
+            dependsOn: step.dependsOn ?? [],
           })),
         },
       },

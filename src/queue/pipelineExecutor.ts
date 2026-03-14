@@ -1,11 +1,15 @@
 import { prisma } from "../config/db";
 import { ModelRouter } from "../services/modelRouter";
 import { ValidatorService } from "../validation/validatorService";
+import { JsonRepairService } from "../services/jsonRepairService";
 import { logger } from "../utils/logger";
 import { StepType } from "../models/pipeline";
 
 const modelRouter = new ModelRouter();
 const validator = new ValidatorService();
+const jsonRepair = new JsonRepairService();
+
+type StepStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
 
 export class PipelineExecutor {
   async executeRun(runId: string): Promise<void> {
@@ -27,139 +31,302 @@ export class PipelineExecutor {
       throw new Error(`Pipeline for run ${runId} not found`);
     }
 
-    let currentInput = run.input;
-    let lastPrompt: string | null = null;
-    let lastResponse: string | null = null;
-    let lastReviewStatus: string | null = null;
-    let lastReviewComments: string | null = null;
+    const steps = pipeline.steps;
+    const stepById = new Map<string, (typeof steps)[number]>();
+    const dependencies = new Map<string, string[]>();
+    const status = new Map<string, StepStatus>();
+    const results = new Map<string, { prompt: string; response: string }>();
 
-    for (const step of pipeline.steps) {
-      const startedAt = Date.now();
+    // Build maps and normalize dependsOn. If all dependsOn arrays are empty,
+    // fall back to a simple linear chain based on stepOrder.
+    let anyDepends = false;
+    for (const step of steps) {
+      stepById.set(step.id, step);
+      const depends = ((step as any).dependsOn as string[] | undefined) ?? [];
+      if (depends.length > 0) {
+        anyDepends = true;
+      }
+      dependencies.set(step.id, depends);
+      status.set(step.id, "PENDING");
+    }
 
-      const stepType = (step.stepType || "generic") as StepType;
+    if (!anyDepends) {
+      const sorted = [...steps].sort((a, b) => a.stepOrder - b.stepOrder);
+      dependencies.clear();
+      for (let i = 0; i < sorted.length; i++) {
+        const prev = i > 0 ? sorted[i - 1].id : null;
+        dependencies.set(sorted[i].id, prev ? [prev] : []);
+      }
+    }
 
-      let prompt: string;
+    const allStepIds = [...stepById.keys()];
 
-      // For reviewer steps, build a prompt that includes both the original
-      // prompt and the output being reviewed.
-      if (stepType === "reviewer") {
-        const originalPrompt = lastPrompt ?? "";
-        const originalResponse = lastResponse ?? JSON.stringify(currentInput);
-        prompt =
-          "You are a strict reviewer in a maker-checker flow.\n" +
-          "Given the original prompt and the model output, decide whether the output is acceptable.\n\n" +
-          "Return ONLY one of the following formats:\n" +
-          '1) "APPROVED"\n' +
-          '2) "REJECTED: <short explanation>"\n\n' +
-          `Original prompt:\n${originalPrompt}\n\n` +
-          `Output:\n${originalResponse}\n\n` +
-          "Decision:";
-      } else if (stepType === "fixer") {
-        const originalPrompt = lastPrompt ?? "";
-        const originalResponse = lastResponse ?? JSON.stringify(currentInput);
-        const reviewComments = lastReviewComments ?? "";
-        prompt =
-          "You are a fixer in a maker-checker flow.\n" +
-          "Given the original prompt, the previous output, and review comments, produce a corrected output.\n\n" +
-          `Original prompt:\n${originalPrompt}\n\n` +
-          `Previous output:\n${originalResponse}\n\n` +
-          `Review comments:\n${reviewComments}\n\n` +
-          "Return ONLY the corrected output, with no additional commentary.";
-      } else {
-        prompt = this.buildPrompt(step.promptTemplate, {
-          input: currentInput,
-          stepType,
+    const getRunnableSteps = () =>
+      allStepIds.filter((id) => {
+        if (status.get(id) !== "PENDING") return false;
+        const deps = dependencies.get(id) ?? [];
+        return deps.every((d) => status.get(d) === "COMPLETED");
+      });
+
+    const total = allStepIds.length;
+    let completedCount = 0;
+
+    while (completedCount < total) {
+      const runnable = getRunnableSteps();
+      if (runnable.length === 0) {
+        // Deadlock or unresolved dependencies.
+        logger.error("No runnable steps found; possible cyclic dependencies", {
+          runId,
         });
+        await prisma.run.update({
+          where: { id: runId },
+          data: {
+            status: "FAILED",
+            finishedAt: new Date(),
+          },
+        });
+        return;
       }
 
-      const taskCategory =
-        stepType === "coder" || stepType === "test_generator" || stepType === "fixer"
-          ? "coding"
-          : stepType === "planner" || stepType === "reviewer"
-          ? "reasoning"
-          : "cheap";
+      await Promise.all(
+        runnable.map(async (stepId) => {
+          const step = stepById.get(stepId)!;
+          status.set(stepId, "RUNNING");
 
-      const provider = modelRouter.getProviderForTask(taskCategory);
+          const deps = dependencies.get(stepId) ?? [];
+          let input: unknown = run.input;
+          if (deps.length === 1) {
+            input = results.get(deps[0])?.response ?? run.input;
+          } else if (deps.length > 1) {
+            input = deps.map((d) => results.get(d)?.response);
+          }
 
-      const response = await provider.generate(prompt);
+          const startedAt = new Date();
+          const stepType = (step.stepType || "generic") as StepType;
 
-      const durationMs = Date.now() - startedAt;
+          let prompt: string;
 
-      let reviewStatus: string | null = null;
-      let reviewComments: string | null = null;
+          if (stepType === "reviewer") {
+            const lastDep = deps[deps.length - 1];
+            const target = results.get(lastDep);
+            const originalPrompt = target?.prompt ?? "";
+            const originalResponse = target?.response ?? JSON.stringify(input);
+            prompt =
+              "You are a strict reviewer in a maker-checker flow.\n" +
+              "Given the original prompt and the model output, decide whether the output is acceptable.\n\n" +
+              "Return ONLY one of the following formats:\n" +
+              '1) "APPROVED"\n' +
+              '2) "REJECTED: <short explanation>"\n\n' +
+              `Original prompt:\n${originalPrompt}\n\n` +
+              `Output:\n${originalResponse}\n\n` +
+              "Decision:";
+          } else if (stepType === "fixer") {
+            const lastDep = deps[deps.length - 1];
+            const target = results.get(lastDep);
+            const originalPrompt = target?.prompt ?? "";
+            const originalResponse = target?.response ?? JSON.stringify(input);
+            prompt =
+              "You are a fixer in a maker-checker flow.\n" +
+              "Given the original prompt and the previous output, produce a corrected output.\n\n" +
+              `Original prompt:\n${originalPrompt}\n\n` +
+              `Previous output:\n${originalResponse}\n\n` +
+              "Return ONLY the corrected output, with no additional commentary.";
+          } else {
+            prompt = this.buildPrompt(step.promptTemplate, {
+              input,
+              stepType,
+            });
+          }
 
-      // Parse reviewer decisions into a structured status/comments pair.
-      if (stepType === "reviewer") {
-        const trimmed = response.trim();
-        if (trimmed.toUpperCase().startsWith("APPROVED")) {
-          reviewStatus = "APPROVED";
-          reviewComments = "";
-        } else if (trimmed.toUpperCase().startsWith("REJECTED")) {
-          reviewStatus = "REJECTED";
-          const parts = trimmed.split(":");
-          reviewComments = parts.slice(1).join(":").trim();
-        } else {
-          reviewStatus = "REJECTED";
-          reviewComments = "Reviewer returned an unexpected format.";
-        }
-        lastReviewStatus = reviewStatus;
-        lastReviewComments = reviewComments;
-      }
+          const taskCategory =
+            stepType === "coder" || stepType === "test_generator" || stepType === "fixer"
+              ? "coding"
+              : stepType === "planner" || stepType === "reviewer"
+              ? "reasoning"
+              : "cheap";
 
-      await prisma.runStep.create({
-        data: {
-          runId: run.id,
-          stepId: step.id,
-          modelUsed: provider.constructor.name,
-          prompt,
-          response,
-          durationMs,
-          tokenCost: null, // TODO: compute from provider usage
-          reviewStatus,
-          reviewComments,
-        },
-      });
+          const provider = modelRouter.getProviderForTask(taskCategory);
 
-      logger.info("Executed pipeline step", {
-        runId,
-        stepId: step.id,
-        model: provider.constructor.name,
-        durationMs,
-      });
+          let response: string;
+          let reviewStatus: string | null = null;
+          let reviewComments: string | null = null;
+          let validationErrors: string[] | null = null;
 
-      // For validator steps, run validation (JSON + LLM-based sanity check).
-      if (stepType === "validator") {
-        const basic = validator.validateJsonAgainstSchema(response);
-        let finalResult = basic;
+          try {
+            response = await provider.generate(prompt);
 
-        if (basic.valid) {
-          // Only call the LLM validator if the cheap checks pass.
-          const llmResult = await validator.validateWithLlm(
-            response,
-            "Output should be valid, coherent, and match the intended task."
-          );
-          finalResult = llmResult;
-        }
+            // Schema validation + repair
+            if ((step as any).schema) {
+              const schema = (step as any).schema as unknown;
+              const basic = validator.validateJsonAgainstJsonSchema(response, schema);
+              if (!basic.valid) {
+                const repairResult = await jsonRepair.repair(
+                  response,
+                  schema,
+                  basic.errors
+                );
+                const repairedValidation = validator.validateJsonAgainstJsonSchema(
+                  repairResult.repaired,
+                  schema
+                );
 
-        if (!finalResult.valid) {
-          await prisma.run.update({
-            where: { id: run.id },
-            data: {
-              status: "FAILED",
-              finishedAt: new Date(),
-            },
-          });
-          logger.error("Validation failed", { runId, errors: finalResult.errors });
-          return;
-        }
-      }
+                if (!repairedValidation.valid) {
+                  validationErrors = [...basic.errors, ...repairedValidation.errors];
+                  const endedAt = new Date();
+                  const durationMs = endedAt.getTime() - startedAt.getTime();
 
-      // Update context for subsequent steps.
-      lastPrompt = prompt;
-      lastResponse = response;
+                  await prisma.runStep.create({
+                    data: {
+                      runId: run.id,
+                      stepId: step.id,
+                      modelUsed: provider.constructor.name,
+                      prompt,
+                      response: repairResult.repaired,
+                      tokenCost: null,
+                      durationMs,
+                      reviewStatus: null,
+                      reviewComments: null,
+                      validationErrors: JSON.stringify(validationErrors),
+                      status: "FAILED",
+                      startTime: startedAt,
+                      endTime: endedAt,
+                    },
+                  });
 
-      // Pass response to the next step as input (maker-checker flows rely on this).
-      currentInput = response;
+                  await prisma.run.update({
+                    where: { id: run.id },
+                    data: {
+                      status: "FAILED",
+                      finishedAt: new Date(),
+                    },
+                  });
+
+                  logger.error("Schema validation failed after repair", {
+                    runId,
+                    stepId: step.id,
+                    errors: validationErrors,
+                  });
+
+                  status.set(stepId, "FAILED");
+                  throw new Error("Schema validation failed after repair");
+                }
+
+                response = repairResult.repaired;
+                validationErrors = basic.errors;
+              }
+            }
+
+            // Reviewer parsing
+            if (stepType === "reviewer") {
+              const trimmed = response.trim();
+              if (trimmed.toUpperCase().startsWith("APPROVED")) {
+                reviewStatus = "APPROVED";
+                reviewComments = "";
+              } else if (trimmed.toUpperCase().startsWith("REJECTED")) {
+                reviewStatus = "REJECTED";
+                const parts = trimmed.split(":");
+                reviewComments = parts.slice(1).join(":").trim();
+              } else {
+                reviewStatus = "REJECTED";
+                reviewComments = "Reviewer returned an unexpected format.";
+              }
+            }
+
+            // Validator step (LLM-based)
+            if (stepType === "validator") {
+              const basic = validator.validateJsonAgainstSchema(response);
+              let finalResult = basic;
+
+              if (basic.valid) {
+                const llmResult = await validator.validateWithLlm(
+                  response,
+                  "Output should be valid, coherent, and match the intended task."
+                );
+                finalResult = llmResult;
+              }
+
+              if (!finalResult.valid) {
+                validationErrors = finalResult.errors;
+                const endedAt = new Date();
+                const durationMs = endedAt.getTime() - startedAt.getTime();
+
+                await prisma.runStep.create({
+                  data: {
+                    runId: run.id,
+                    stepId: step.id,
+                    modelUsed: provider.constructor.name,
+                    prompt,
+                    response,
+                    tokenCost: null,
+                    durationMs,
+                    reviewStatus,
+                    reviewComments,
+                    validationErrors: JSON.stringify(validationErrors),
+                    status: "FAILED",
+                    startTime: startedAt,
+                    endTime: endedAt,
+                  },
+                });
+
+                await prisma.run.update({
+                  where: { id: run.id },
+                  data: {
+                    status: "FAILED",
+                    finishedAt: new Date(),
+                  },
+                });
+
+                logger.error("Validation failed", {
+                  runId,
+                  errors: finalResult.errors,
+                });
+
+                status.set(stepId, "FAILED");
+                throw new Error("Validator step failed");
+              }
+            }
+
+            const endedAt = new Date();
+            const durationMs = endedAt.getTime() - startedAt.getTime();
+
+            await prisma.runStep.create({
+              data: {
+                runId: run.id,
+                stepId: step.id,
+                modelUsed: provider.constructor.name,
+                prompt,
+                response,
+                tokenCost: null,
+                durationMs,
+                reviewStatus,
+                reviewComments,
+                validationErrors: validationErrors
+                  ? JSON.stringify(validationErrors)
+                  : null,
+                status: "COMPLETED",
+                startTime: startedAt,
+                endTime: endedAt,
+              },
+            });
+
+            logger.info("Executed pipeline step", {
+              runId,
+              stepId: step.id,
+              model: provider.constructor.name,
+              durationMs,
+            });
+
+            results.set(stepId, { prompt, response });
+            status.set(stepId, "COMPLETED");
+          } catch (err) {
+            logger.error("Step execution failed", { runId, stepId, error: err });
+            status.set(stepId, "FAILED");
+            throw err;
+          }
+        })
+      );
+
+      completedCount = allStepIds.filter((id) => status.get(id) === "COMPLETED").length;
     }
 
     await prisma.run.update({

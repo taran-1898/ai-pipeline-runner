@@ -13,6 +13,8 @@ const createPipelineSchema = z.object({
         stepType: z.custom<StepType>(),
         task: z.string(),
         promptTemplate: z.string(),
+        schema: z.unknown().optional(),
+        dependsOn: z.array(z.string()).optional(),
       })
     )
     .min(1),
