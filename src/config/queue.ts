@@ -1,8 +1,10 @@
 import { Queue } from "bullmq";
 import { config } from "./env";
-import IORedis from "ioredis";
+import type { QueueOptions } from "bullmq";
 
-export const connection = new IORedis(config.redisUrl);
+export const connection: QueueOptions["connection"] = {
+  url: config.redisUrl,
+};
 
 export const PIPELINE_QUEUE_NAME = "pipeline-runs";
 export const ORCHESTRATION_QUEUE_NAME = "orchestration-jobs";

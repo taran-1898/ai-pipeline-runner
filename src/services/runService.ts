@@ -20,7 +20,7 @@ export class RunService {
       },
     });
 
-    await pipelineQueue.add("pipeline-run", { runId: run.id });
+    await pipelineQueue.add("pipeline-run", { runId: run.id } as PipelineRunJobData);
 
     return run;
   }

@@ -53,6 +53,8 @@ model RunStep {
   response   String
   tokenCost  Int?
   durationMs Int
+  reviewStatus  String?
+  reviewComments String?
 }
 
 enum RunStatus {

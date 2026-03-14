@@ -28,25 +28,83 @@ export class PipelineExecutor {
     }
 
     let currentInput = run.input;
+    let lastPrompt: string | null = null;
+    let lastResponse: string | null = null;
+    let lastReviewStatus: string | null = null;
+    let lastReviewComments: string | null = null;
 
     for (const step of pipeline.steps) {
       const startedAt = Date.now();
 
       const stepType = (step.stepType || "generic") as StepType;
 
-      const prompt = this.buildPrompt(step.promptTemplate, {
-        input: currentInput,
-        stepType,
-      });
+      let prompt: string;
+
+      // For reviewer steps, build a prompt that includes both the original
+      // prompt and the output being reviewed.
+      if (stepType === "reviewer") {
+        const originalPrompt = lastPrompt ?? "";
+        const originalResponse = lastResponse ?? JSON.stringify(currentInput);
+        prompt =
+          "You are a strict reviewer in a maker-checker flow.\n" +
+          "Given the original prompt and the model output, decide whether the output is acceptable.\n\n" +
+          "Return ONLY one of the following formats:\n" +
+          '1) "APPROVED"\n' +
+          '2) "REJECTED: <short explanation>"\n\n' +
+          `Original prompt:\n${originalPrompt}\n\n` +
+          `Output:\n${originalResponse}\n\n` +
+          "Decision:";
+      } else if (stepType === "fixer") {
+        const originalPrompt = lastPrompt ?? "";
+        const originalResponse = lastResponse ?? JSON.stringify(currentInput);
+        const reviewComments = lastReviewComments ?? "";
+        prompt =
+          "You are a fixer in a maker-checker flow.\n" +
+          "Given the original prompt, the previous output, and review comments, produce a corrected output.\n\n" +
+          `Original prompt:\n${originalPrompt}\n\n` +
+          `Previous output:\n${originalResponse}\n\n` +
+          `Review comments:\n${reviewComments}\n\n` +
+          "Return ONLY the corrected output, with no additional commentary.";
+      } else {
+        prompt = this.buildPrompt(step.promptTemplate, {
+          input: currentInput,
+          stepType,
+        });
+      }
 
       const taskCategory =
-        stepType === "coder" ? "coding" : stepType === "planner" ? "reasoning" : "cheap";
+        stepType === "coder" || stepType === "test_generator" || stepType === "fixer"
+          ? "coding"
+          : stepType === "planner" || stepType === "reviewer"
+          ? "reasoning"
+          : "cheap";
 
       const provider = modelRouter.getProviderForTask(taskCategory);
 
       const response = await provider.generate(prompt);
 
       const durationMs = Date.now() - startedAt;
+
+      let reviewStatus: string | null = null;
+      let reviewComments: string | null = null;
+
+      // Parse reviewer decisions into a structured status/comments pair.
+      if (stepType === "reviewer") {
+        const trimmed = response.trim();
+        if (trimmed.toUpperCase().startsWith("APPROVED")) {
+          reviewStatus = "APPROVED";
+          reviewComments = "";
+        } else if (trimmed.toUpperCase().startsWith("REJECTED")) {
+          reviewStatus = "REJECTED";
+          const parts = trimmed.split(":");
+          reviewComments = parts.slice(1).join(":").trim();
+        } else {
+          reviewStatus = "REJECTED";
+          reviewComments = "Reviewer returned an unexpected format.";
+        }
+        lastReviewStatus = reviewStatus;
+        lastReviewComments = reviewComments;
+      }
 
       await prisma.runStep.create({
         data: {
@@ -57,6 +115,8 @@ export class PipelineExecutor {
           response,
           durationMs,
           tokenCost: null, // TODO: compute from provider usage
+          reviewStatus,
+          reviewComments,
         },
       });
 
@@ -67,10 +127,21 @@ export class PipelineExecutor {
         durationMs,
       });
 
-      // For validator steps, run simple validation
+      // For validator steps, run validation (JSON + LLM-based sanity check).
       if (stepType === "validator") {
-        const validation = validator.validateJsonAgainstSchema(response);
-        if (!validation.valid) {
+        const basic = validator.validateJsonAgainstSchema(response);
+        let finalResult = basic;
+
+        if (basic.valid) {
+          // Only call the LLM validator if the cheap checks pass.
+          const llmResult = await validator.validateWithLlm(
+            response,
+            "Output should be valid, coherent, and match the intended task."
+          );
+          finalResult = llmResult;
+        }
+
+        if (!finalResult.valid) {
           await prisma.run.update({
             where: { id: run.id },
             data: {
@@ -78,12 +149,16 @@ export class PipelineExecutor {
               finishedAt: new Date(),
             },
           });
-          logger.error("Validation failed", { runId, errors: validation.errors });
+          logger.error("Validation failed", { runId, errors: finalResult.errors });
           return;
         }
       }
 
-      // Pass response to the next step as input
+      // Update context for subsequent steps.
+      lastPrompt = prompt;
+      lastResponse = response;
+
+      // Pass response to the next step as input (maker-checker flows rely on this).
       currentInput = response;
     }
 

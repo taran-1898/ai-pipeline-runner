@@ -1,4 +1,11 @@
-export type StepType = "planner" | "coder" | "validator" | "generic";
+export type StepType =
+  | "planner"
+  | "coder"
+  | "validator"
+  | "test_generator"
+  | "reviewer"
+  | "fixer"
+  | "generic";
 
 export interface PipelineDefinitionStep {
   stepType: StepType;
