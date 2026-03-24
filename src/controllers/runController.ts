@@ -29,5 +29,16 @@ export class RunController {
     }
     return reply.send(run);
   };
+
+  getRunArtifacts = async (request: FastifyRequest, reply: FastifyReply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const artifacts = await this.runService.getRunArtifacts(params.id);
+
+    if (!artifacts) {
+      return reply.status(404).send({ error: "Run not found" });
+    }
+
+    return reply.send(artifacts);
+  };
 }
 

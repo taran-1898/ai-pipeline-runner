@@ -6,6 +6,7 @@ import { OrchestrationService } from "../services/orchestrationService";
 const interactionSchema = z.object({
   text: z.string().optional(),
   audioPath: z.string().optional(),
+  sessionId: z.string().optional(),
 });
 
 /**
@@ -23,7 +24,7 @@ export class InteractionController {
       return reply.status(400).send({ error: parsed.error.flatten() });
     }
 
-    const { text, audioPath } = parsed.data;
+    const { text, audioPath, sessionId } = parsed.data;
 
     if (!text && !audioPath) {
       return reply
@@ -36,7 +37,7 @@ export class InteractionController {
       !text && !!audioPath
     );
 
-    await orchestrationQueue.add("interaction", { userText });
+    await orchestrationQueue.add("interaction", { userText, sessionId });
 
     return reply.status(202).send({ enqueued: true });
   };

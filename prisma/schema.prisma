@@ -26,6 +26,7 @@ model PipelineStep {
   promptTemplate String
   schema        Json?
   dependsOn     String[] @default([])
+  dependsOnStepId String?
 
   runSteps RunStep[]
 
@@ -42,6 +43,7 @@ model Run {
   finishedAt DateTime?
 
   steps RunStep[]
+  artifacts RunArtifact[]
 }
 
 model RunStep {
@@ -63,10 +65,56 @@ model RunStep {
   endTime    DateTime
 }
 
+model RunArtifact {
+  id        String   @id @default(cuid())
+  run       Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runId     String
+  type      String
+  fileKey   String
+  fileUrl   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
 enum RunStatus {
   PENDING
   RUNNING
   COMPLETED
   FAILED
+}
+
+model ModelMetrics {
+  model        String  @id
+  successCount Int     @default(0)
+  failureCount Int     @default(0)
+  avgLatency   Float   @default(0) // milliseconds
+  avgCost      Float?
+}
+
+model ConversationSession {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  lastActiveAt DateTime @default(now())
+  contextJson Json?
+
+  messages ConversationMessage[]
+}
+
+model ConversationMessage {
+  id        String   @id @default(cuid())
+  session   ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId String
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+}
+
+model ExternalFile {
+  id        String   @id @default(cuid())
+  provider  String
+  fileId    String
+  filename  String
+  mimeType  String
+  createdAt DateTime @default(now())
 }
 

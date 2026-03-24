@@ -21,10 +21,10 @@ const orchestrationService = new OrchestrationService();
 const worker = new Worker<OrchestrationJobData>(
   ORCHESTRATION_QUEUE_NAME,
   async (job: Job<OrchestrationJobData>) => {
-    const { userText } = job.data;
+    const { userText, sessionId } = job.data;
 
-    const { decision, provider, tool } =
-      orchestrationService.getProviderForUserText(userText);
+    const { decision, provider, tool, enrichedText } =
+      await orchestrationService.prepareForUserText(userText, sessionId);
 
     logger.info("Processing orchestration job", {
       userTextSnippet: userText.slice(0, 120),
@@ -35,16 +35,24 @@ const worker = new Worker<OrchestrationJobData>(
     // - Create pipeline runs based on the decision.
     // - Store orchestration traces in dedicated tables.
     if (provider) {
-      const result = await provider.generate(userText);
+      const result = await provider.generate(enrichedText);
       logger.info("Orchestration LLM result snippet", {
         snippet: result.slice(0, 200),
       });
+
+      if (sessionId) {
+        await orchestrationService.appendConversationTurn(sessionId, userText, result);
+      }
     } else if (tool) {
-      const result = await tool.invoke(userText);
+      const result = await tool.invoke(enrichedText);
       logger.info("Orchestration tool result snippet", {
         tool: tool.name,
         snippet: result.slice(0, 200),
       });
+
+      if (sessionId) {
+        await orchestrationService.appendConversationTurn(sessionId, userText, result);
+      }
     } else {
       logger.error("No provider or tool resolved for orchestration job", {
         decision,

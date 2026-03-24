@@ -8,5 +8,6 @@ export async function runsRoutes(app: FastifyInstance) {
 
   app.post("/pipelines/:id/run", controller.startRun);
   app.get("/runs/:id", controller.getRun);
+   app.get("/runs/:id/artifacts", controller.getRunArtifacts);
 }
 

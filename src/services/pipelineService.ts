@@ -14,6 +14,7 @@ export class PipelineService {
             promptTemplate: step.promptTemplate,
             schema: step.schema as any,
             dependsOn: step.dependsOn ?? [],
+            dependsOnStepId: step.dependsOnStepId,
           })),
         },
       },

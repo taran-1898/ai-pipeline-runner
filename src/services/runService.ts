@@ -37,5 +37,22 @@ export class RunService {
       },
     });
   }
+
+  async getRunArtifacts(runId: string) {
+    const run = await prisma.run.findUnique({
+      where: { id: runId },
+    });
+
+    if (!run) {
+      return null;
+    }
+
+    const artifacts = await (prisma as any).runArtifact.findMany({
+      where: { runId },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return artifacts;
+  }
 }
 

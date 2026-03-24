@@ -23,6 +23,7 @@ export const pipelineQueue = new Queue<PipelineRunJobData>(PIPELINE_QUEUE_NAME, 
 
 export interface OrchestrationJobData {
   userText: string;
+  sessionId?: string;
 }
 
 export const orchestrationQueue = new Queue<OrchestrationJobData>(

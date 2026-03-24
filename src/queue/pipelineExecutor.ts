@@ -4,10 +4,14 @@ import { ValidatorService } from "../validation/validatorService";
 import { JsonRepairService } from "../services/jsonRepairService";
 import { logger } from "../utils/logger";
 import { StepType } from "../models/pipeline";
+import { ToolRouter } from "../services/toolRouter";
+import { StorageService } from "../services/storageService";
 
 const modelRouter = new ModelRouter();
+const toolRouter = new ToolRouter({ modelRouter });
 const validator = new ValidatorService();
 const jsonRepair = new JsonRepairService();
+const storage = new StorageService();
 
 type StepStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
 
@@ -102,7 +106,8 @@ export class PipelineExecutor {
           }
 
           const startedAt = new Date();
-          const stepType = (step.stepType || "generic") as StepType;
+          const rawStepType = ((step as any).stepType || "generic") as string;
+          const stepType = rawStepType.toLowerCase() as StepType;
 
           let prompt: string;
 
@@ -138,22 +143,32 @@ export class PipelineExecutor {
             });
           }
 
-          const taskCategory =
-            stepType === "coder" || stepType === "test_generator" || stepType === "fixer"
-              ? "coding"
-              : stepType === "planner" || stepType === "reviewer"
-              ? "reasoning"
-              : "cheap";
-
-          const provider = modelRouter.getProviderForTask(taskCategory);
-
           let response: string;
           let reviewStatus: string | null = null;
           let reviewComments: string | null = null;
           let validationErrors: string[] | null = null;
+          let modelOrToolUsed: string | null = null;
+          let artifactType: "text" | "file" | "image" | "audio" | "video" = "text";
 
           try {
-            response = await provider.generate(prompt);
+            if (stepType === "tool") {
+              const toolResult = await toolRouter.route(prompt);
+              response = toolResult.response;
+              modelOrToolUsed = toolResult.name;
+              artifactType = toolResult.artifactType;
+            } else {
+              const taskCategory =
+                stepType === "coder" || stepType === "test_generator" || stepType === "fixer"
+                  ? "coding"
+                  : stepType === "planner" || stepType === "reviewer"
+                  ? "reasoning"
+                  : "cheap";
+
+              const provider = modelRouter.getProviderForTask(taskCategory);
+              response = await provider.generate(prompt);
+              modelOrToolUsed = provider.constructor.name;
+              artifactType = "text";
+            }
 
             // Schema validation + repair
             if ((step as any).schema) {
@@ -179,7 +194,7 @@ export class PipelineExecutor {
                     data: {
                       runId: run.id,
                       stepId: step.id,
-                      modelUsed: provider.constructor.name,
+                      modelUsed: modelOrToolUsed,
                       prompt,
                       response: repairResult.repaired,
                       tokenCost: null,
@@ -208,6 +223,16 @@ export class PipelineExecutor {
                   });
 
                   status.set(stepId, "FAILED");
+
+                  // Record failure metrics for the model, if applicable.
+                  if (modelOrToolUsed) {
+                    await modelRouter.recordStepMetrics({
+                      model: modelOrToolUsed,
+                      success: false,
+                      durationMs,
+                      cost: null,
+                    });
+                  }
                   throw new Error("Schema validation failed after repair");
                 }
 
@@ -254,7 +279,7 @@ export class PipelineExecutor {
                   data: {
                     runId: run.id,
                     stepId: step.id,
-                    modelUsed: provider.constructor.name,
+                    modelUsed: modelOrToolUsed,
                     prompt,
                     response,
                     tokenCost: null,
@@ -282,6 +307,16 @@ export class PipelineExecutor {
                 });
 
                 status.set(stepId, "FAILED");
+
+                // Record failure metrics for the model, if applicable.
+                if (modelOrToolUsed) {
+                  await modelRouter.recordStepMetrics({
+                    model: modelOrToolUsed,
+                    success: false,
+                    durationMs,
+                    cost: null,
+                  });
+                }
                 throw new Error("Validator step failed");
               }
             }
@@ -293,7 +328,7 @@ export class PipelineExecutor {
               data: {
                 runId: run.id,
                 stepId: step.id,
-                modelUsed: provider.constructor.name,
+                modelUsed: modelOrToolUsed,
                 prompt,
                 response,
                 tokenCost: null,
@@ -309,18 +344,82 @@ export class PipelineExecutor {
               },
             });
 
-            logger.info("Executed pipeline step", {
-              runId,
-              stepId: step.id,
-              model: provider.constructor.name,
-              durationMs,
-            });
+            // Store artifact in Cloudflare R2 and persist metadata.
+            try {
+              const artifactBuffer = Buffer.from(response, "utf8");
+              const key = `${run.id}/${step.id}/${startedAt.getTime()}.txt`;
+              const fileUrl = await storage.uploadArtifact(
+                artifactBuffer,
+                key,
+                "text/plain; charset=utf-8"
+              );
+
+              await (prisma as any).runArtifact.create({
+                data: {
+                  runId: run.id,
+                  type:
+                    artifactType === "file"
+                      ? "document"
+                      : artifactType === "text"
+                      ? "text"
+                      : artifactType,
+                  fileKey: key,
+                  fileUrl,
+                  metadata: {
+                    stepId: step.id,
+                    stepType,
+                    modelOrToolUsed,
+                  },
+                },
+              });
+            } catch (storageErr) {
+              logger.error("Failed to persist run artifact to storage", {
+                runId,
+                stepId: step.id,
+                error: storageErr,
+              });
+            }
+
+            // Record success metrics for the model, if applicable.
+            if (modelOrToolUsed) {
+              await modelRouter.recordStepMetrics({
+                model: modelOrToolUsed,
+                success: true,
+                durationMs,
+                cost: null,
+              });
+            }
+
+            logger.info(
+              stepType === "tool" ? "Executed tool pipeline step" : "Executed pipeline step",
+              {
+                runId,
+                stepId: step.id,
+                modelOrTool: modelOrToolUsed,
+                stepType,
+                durationMs,
+              }
+            );
 
             results.set(stepId, { prompt, response });
             status.set(stepId, "COMPLETED");
           } catch (err) {
+            const endedAt = new Date();
+            const durationMs = endedAt.getTime() - startedAt.getTime();
+
             logger.error("Step execution failed", { runId, stepId, error: err });
             status.set(stepId, "FAILED");
+
+            // Record failure metrics for the model, if applicable.
+            if (modelOrToolUsed) {
+              await modelRouter.recordStepMetrics({
+                model: modelOrToolUsed,
+                success: false,
+                durationMs,
+                cost: null,
+              });
+            }
+
             throw err;
           }
         })

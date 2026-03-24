@@ -19,6 +19,11 @@ export interface AppConfig {
   fathomApiKey?: string;
   gammaApiKey?: string;
   cursorApiKey?: string;
+  r2AccountId?: string;
+  r2AccessKeyId?: string;
+  r2SecretAccessKey?: string;
+  r2Bucket?: string;
+  r2PublicUrl?: string;
 }
 
 export const config: AppConfig = {
@@ -40,5 +45,10 @@ export const config: AppConfig = {
   fathomApiKey: process.env.FATHOM_API_KEY,
   gammaApiKey: process.env.GAMMA_API_KEY,
   cursorApiKey: process.env.CURSOR_API_KEY,
+  r2AccountId: process.env.R2_ACCOUNT_ID,
+  r2AccessKeyId: process.env.R2_ACCESS_KEY_ID,
+  r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  r2Bucket: process.env.R2_BUCKET,
+  r2PublicUrl: process.env.R2_PUBLIC_URL,
 };
 

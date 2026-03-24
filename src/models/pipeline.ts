@@ -5,7 +5,8 @@ export type StepType =
   | "test_generator"
   | "reviewer"
   | "fixer"
-  | "generic";
+  | "generic"
+  | "tool";
 
 export interface PipelineDefinitionStep {
   stepType: StepType;
@@ -13,6 +14,7 @@ export interface PipelineDefinitionStep {
   promptTemplate: string;
   schema?: unknown;
   dependsOn?: string[];
+  dependsOnStepId?: string;
 }
 
 export interface PipelineDefinition {
