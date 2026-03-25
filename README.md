@@ -64,5 +64,4 @@ npm run worker
 - **POST** `/pipelines/:id/run` – start a pipeline run (enqueues a job into the DAG executor)
 - **GET** `/runs/:id` – get run status and execution trace (with steps, including per-step status/timing/validation)
 
-# ai-pipeline-runner
-Multi-LLM workflow orchestration engine with task routing, agent pipelines, and validation layers.
+##This is something I am working on in my free time for my own amusement and eventually my own personal use. The end goal is to create a flow for product people to create PRDs/video samples/write code/Plan/use it as an Ideas board, all while using text or voice inputs at a single entrypoint. Trying to increase productivity on the go by introducing things like Tailscale into the mix. I am open to new ideas and inputs.
