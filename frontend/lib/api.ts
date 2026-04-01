@@ -1,50 +1,70 @@
-import { z } from "zod";
+import type { z } from "zod";
+import { z as zod } from "zod";
 
-const PipelineStepSchema = z.object({
-  id: z.string(),
-  stepOrder: z.number(),
-  stepType: z.string(),
-  promptTemplate: z.string()
+const PipelineStepSchema = zod.object({
+  id: zod.string(),
+  stepOrder: zod.number(),
+  stepType: zod.string(),
+  promptTemplate: zod.string()
 });
 
-const PipelineSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  description: z.string().nullable().optional(),
-  steps: z.array(PipelineStepSchema).optional()
+const PipelineSchema = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  description: zod.string().nullable().optional(),
+  steps: zod.array(PipelineStepSchema).optional()
 });
 
-const RunStepSchema = z.object({
-  id: z.string(),
-  status: z.string(),
+const RunStepSchema = zod.object({
+  id: zod.string(),
+  status: zod.string(),
   step: PipelineStepSchema
 });
 
-const RunSchema = z.object({
-  id: z.string(),
-  status: z.string(),
-  pipelineId: z.string(),
-  steps: z.array(RunStepSchema).optional()
+const RunSchema = zod.object({
+  id: zod.string(),
+  status: zod.string(),
+  pipelineId: zod.string(),
+  steps: zod.array(RunStepSchema).optional()
 });
 
-const ArtifactSchema = z.object({
-  id: z.string(),
-  runId: z.string(),
-  type: z.string(),
-  fileKey: z.string(),
-  fileUrl: z.string(),
-  metadata: z.unknown().nullable().optional()
+const ArtifactSchema = zod.object({
+  id: zod.string(),
+  runId: zod.string(),
+  type: zod.string(),
+  fileKey: zod.string(),
+  fileUrl: zod.string(),
+  metadata: zod.unknown().nullable().optional()
+});
+
+const NodeSchema = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  hostname: zod.string().optional(),
+  tailscaleIp: zod.string().optional(),
+  capabilities: zod.array(zod.string()),
+  status: zod.string(),
+  lastHeartbeat: zod.string().nullable().optional()
+});
+
+const VoiceResponseSchema = zod.object({
+  transcript: zod.string(),
+  pipelineGenerated: zod.boolean(),
+  runId: zod.string().nullable().optional()
 });
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = init?.body instanceof FormData;
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {})
-    }
+    headers: isFormData
+      ? (init?.headers || {})
+      : {
+          "Content-Type": "application/json",
+          ...(init?.headers || {})
+        }
   });
   if (!res.ok) {
     const text = await res.text();
@@ -55,7 +75,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function getPipelines() {
   const data = await apiFetch<unknown>("/pipelines");
-  return z.array(PipelineSchema).parse(data);
+  return zod.array(PipelineSchema).parse(data);
 }
 
 export async function createPipeline(payload: {
@@ -89,6 +109,38 @@ export async function getRun(id: string) {
 
 export async function getArtifacts(runId: string) {
   const data = await apiFetch<unknown>(`/runs/${runId}/artifacts`);
-  return z.array(ArtifactSchema).parse(data);
+  return zod.array(ArtifactSchema).parse(data);
 }
 
+export async function getNodes() {
+  const data = await apiFetch<unknown>("/nodes");
+  return zod.array(NodeSchema).parse(data);
+}
+
+export async function registerNode(payload: {
+  name: string;
+  hostname?: string;
+  tailscaleIp?: string;
+  capabilities: string[];
+}) {
+  const data = await apiFetch<unknown>("/nodes/register", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+  return NodeSchema.parse(data);
+}
+
+export async function sendVoice(formData: FormData) {
+  const data = await apiFetch<unknown>("/voice", {
+    method: "POST",
+    body: formData
+  });
+  return VoiceResponseSchema.parse(data);
+}
+
+export async function sendInteraction(text: string, sessionId?: string) {
+  return apiFetch<{ enqueued: boolean }>("/interactions", {
+    method: "POST",
+    body: JSON.stringify({ text, sessionId })
+  });
+}

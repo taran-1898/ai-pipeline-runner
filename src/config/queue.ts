@@ -7,7 +7,7 @@ import type { QueueOptions } from "bullmq";
 export const connection: QueueOptions["connection"] = {
   url: config.redisUrl,
   maxRetriesPerRequest: null,
-  tls: {}
+  ...(config.redisUrl.startsWith("rediss://") ? { tls: {} } : {}),
 };
 
 export const PIPELINE_QUEUE_NAME = "pipeline-runs";

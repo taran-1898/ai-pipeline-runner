@@ -205,13 +205,18 @@
 			"name": "Nodes",
 			"item": [
 				{
-					"name": "Register Node",
+					"name": "Register Node (Local)",
 					"request": {
 						"method": "POST",
-						"header": [],
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"id\": \"node-1\",\n    \"name\": \"My Local Worker\",\n    \"capabilities\": [\"gpu\", \"whisper\"]\n}",
+							"raw": "{\n    \"name\": \"My Local Worker\",\n    \"capabilities\": [\"gpu\", \"whisper\"]\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -221,7 +226,39 @@
 						"url": {
 							"raw": "{{base_url}}/nodes/register",
 							"host": [
-								"http://localhost:3000"
+								"{{base_url}}"
+							],
+							"path": [
+								"nodes",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Register Node (Tailscale)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"GPU Rig\",\n    \"hostname\": \"my-gpu-machine\",\n    \"tailscaleIp\": \"100.x.y.z\",\n    \"capabilities\": [\"gpu\", \"render\", \"video_encode\"]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/nodes/register",
+							"host": [
+								"{{base_url}}"
 							],
 							"path": [
 								"nodes",

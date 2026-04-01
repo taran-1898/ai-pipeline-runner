@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>AI Pipeline Runner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --surface2: #1c1c28;
+      --border: rgba(255,255,255,0.08);
+      --accent: #7c6ff7;
+      --accent2: #a78bfa;
+      --green: #34d399;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --text: #f1f0ff;
+      --muted: #888;
+      --radius: 16px;
+    }
+
+    html, body { height: 100%; background: var(--bg); font-family: 'Inter', system-ui, sans-serif; color: var(--text); }
+
+    body {
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    header {
+      padding: 20px 24px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(10,10,15,0.8);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header .logo {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+
+    header h1 { font-size: 17px; font-weight: 600; }
+    header p { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+    .server-indicator {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: background 0.3s;
+    }
+    .dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding: 20px 16px;
+      max-width: 640px;
+      width: 100%;
+      margin: 0 auto;
+      overflow-y: auto;
+    }
+
+    /* CARD */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 14px;
+    }
+
+    /* VOICE RECORDER */
+    .voice-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      padding: 8px 0;
+    }
+
+    .mic-btn {
+      width: 88px; height: 88px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px;
+      box-shadow: 0 0 0 0 rgba(124,111,247,0.4);
+      transition: transform 0.15s, box-shadow 0.3s;
+      -webkit-tap-highlight-color: transparent;
+      position: relative;
+    }
+
+    .mic-btn:active { transform: scale(0.94); }
+
+    .mic-btn.recording {
+      animation: pulse 1.4s infinite;
+      background: linear-gradient(135deg, #ef4444, #f97316);
+    }
+
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0   rgba(239,68,68,0.5); }
+      70%  { box-shadow: 0 0 0 18px rgba(239,68,68,0); }
+      100% { box-shadow: 0 0 0 0   rgba(239,68,68,0); }
+    }
+
+    .rec-label {
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .rec-label span { color: var(--red); font-weight: 600; display: none; }
+    .rec-label.recording span { display: inline; }
+    .rec-label.recording .idle { display: none; }
+
+    .audio-preview {
+      width: 100%;
+      border-radius: 10px;
+      max-height: 48px;
+      display: none;
+    }
+    .audio-preview.visible { display: block; }
+
+    /* TEXT INPUT */
+    .text-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    textarea {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      padding: 12px 14px;
+      font-family: inherit;
+      font-size: 15px;
+      resize: none;
+      min-height: 80px;
+      outline: none;
+      transition: border-color 0.2s;
+      -webkit-appearance: none;
+    }
+    textarea:focus { border-color: var(--accent); }
+    textarea::placeholder { color: var(--muted); }
+
+    .btn {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 18px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: opacity 0.15s, transform 0.15s;
+      white-space: nowrap;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn:active:not(:disabled) { transform: scale(0.96); }
+    .btn-sm { font-size: 13px; padding: 9px 14px; border-radius: 10px; }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    /* STATUS / RESPONSE */
+    .response-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text);
+      min-height: 64px;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .response-box.empty { color: var(--muted); font-style: italic; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    .badge.success { background: rgba(52,211,153,0.12); color: var(--green); border: 1px solid rgba(52,211,153,0.3); }
+    .badge.error   { background: rgba(248,113,113,0.12); color: var(--red);   border: 1px solid rgba(248,113,113,0.3); }
+    .badge.info    { background: rgba(124,111,247,0.12); color: var(--accent2); border: 1px solid rgba(124,111,247,0.3); }
+
+    /* NODE LIST */
+    .node-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--surface2);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .node-item .dot { flex-shrink: 0; }
+    .node-name { font-weight: 600; flex: 1; }
+    .node-caps { color: var(--muted); font-size: 12px; }
+    .node-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 16px; }
+
+    /* SPINNER */
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* TABS */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--surface2);
+      border-radius: 12px;
+      padding: 4px;
+    }
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 8px;
+      border-radius: 9px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      color: var(--muted);
+      transition: all 0.2s;
+      border: none;
+      background: transparent;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tab.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* run steps */
+    .step-row {
+      display: flex; align-items: center;
+      gap: 8px; font-size: 13px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .step-row:last-child { border-bottom: none; }
+    .step-status { width: 16px; text-align: center; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚡</div>
+  <div>
+    <h1>AI Pipeline Runner</h1>
+    <p>Distributed AI Orchestration</p>
+  </div>
+  <div class="server-indicator">
+    <div class="dot" id="serverDot"></div>
+    <span id="serverLabel">Checking…</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('voice')">🎙️ Voice</button>
+    <button class="tab" onclick="switchTab('text')">✍️ Text</button>
+    <button class="tab" onclick="switchTab('nodes')">🖥️ Nodes</button>
+    <button class="tab" onclick="switchTab('runs')">📋 Runs</button>
+  </div>
+
+  <!-- VOICE TAB -->
+  <div class="tab-panel active" id="panel-voice">
+    <div class="card">
+      <div class="card-title">Voice Command</div>
+      <div class="voice-center">
+        <button class="mic-btn" id="micBtn" onclick="toggleRecording()">🎙️</button>
+        <div class="rec-label" id="recLabel">
+          <span class="idle">Tap to record a voice command</span>
+          <span>● Recording… tap to stop</span>
+        </div>
+        <audio id="audioPreview" class="audio-preview" controls></audio>
+        <button class="btn" id="sendVoiceBtn" onclick="sendVoice()" style="display:none;">
+          Send to Pipeline ↗
+        </button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0">
+      <div class="card-title">Response <span id="voiceBadge"></span></div>
+      <div class="response-box empty" id="voiceResponse">Transcription and pipeline result will appear here.</div>
+    </div>
+  </div>
+
+  <!-- TEXT TAB -->
+  <div class="tab-panel" id="panel-text">
+    <div class="card">
+      <div class="card-title">Text Interaction</div>
+      <div class="text-row">
+        <textarea id="textInput" rows="3" placeholder="Describe a task… e.g. 'Build a fitness app with React'"></textarea>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <input type="text" id="sessionId" placeholder="Session ID (optional)"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+                 color:var(--text);padding:10px 12px;font-family:inherit;font-size:13px;outline:none;-webkit-appearance:none;" />
+        <button class="btn btn-sm" onclick="sendText()">Send</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0">
+      <div class="card-title">Response <span id="textBadge"></span></div>
+      <div class="response-box empty" id="textResponse">Response will appear here.</div>
+    </div>
+  </div>
+
+  <!-- NODES TAB -->
+  <div class="tab-panel" id="panel-nodes">
+    <div class="card">
+      <div class="card-title">Register Local Node</div>
+      <input type="text" id="nodeName" placeholder="Node name"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+               color:var(--text);padding:11px 12px;font-family:inherit;font-size:14px;outline:none;margin-bottom:10px;-webkit-appearance:none;" />
+      <input type="text" id="nodeCaps" placeholder="Capabilities (comma-separated) e.g. gpu,whisper"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+               color:var(--text);padding:11px 12px;font-family:inherit;font-size:14px;outline:none;margin-bottom:10px;-webkit-appearance:none;" />
+      <button class="btn" style="width:100%;" onclick="registerNode()">Register Node</button>
+      <div id="nodeRegResult" style="margin-top:10px;font-size:13px;color:var(--muted);"></div>
+    </div>
+    <div class="card" style="margin-top:0">
+      <div style="display:flex;align-items:center;margin-bottom:14px;">
+        <span class="card-title" style="margin-bottom:0;">Live Nodes</span>
+        <button class="btn btn-sm btn-outline" style="margin-left:auto;font-size:12px;" onclick="refreshNodes()">Refresh</button>
+      </div>
+      <div id="nodeList"><div class="node-empty">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- RUNS TAB -->
+  <div class="tab-panel" id="panel-runs">
+    <div class="card">
+      <div class="card-title">Check Run Status</div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="runId" placeholder="Run ID"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+                 color:var(--text);padding:10px 12px;font-family:inherit;font-size:14px;outline:none;-webkit-appearance:none;" />
+        <button class="btn btn-sm" onclick="fetchRun()">Check</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:0">
+      <div class="card-title">Run Details</div>
+      <div class="response-box empty" id="runDetails">Enter a run ID above and tap Check.</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  const BASE = '';  // Same origin — server serves this file
+
+  // ── Health check ──────────────────────────────────────────────────────────
+  async function checkHealth() {
+    try {
+      const r = await fetch('/health');
+      const ok = r.ok;
+      document.getElementById('serverDot').className = 'dot' + (ok ? ' online' : '');
+      document.getElementById('serverLabel').textContent = ok ? 'Online' : 'Offline';
+    } catch { 
+      document.getElementById('serverLabel').textContent = 'Offline';
+    }
+  }
+  checkHealth();
+  setInterval(checkHealth, 10000);
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach((t,i) => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    const tabs = ['voice','text','nodes','runs'];
+    document.querySelectorAll('.tab')[tabs.indexOf(name)].classList.add('active');
+    document.getElementById('panel-' + name).classList.add('active');
+    if (name === 'nodes') refreshNodes();
+  }
+
+  // ── Voice Recording ───────────────────────────────────────────────────────
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let audioBlob = null;
+
+  async function toggleRecording() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+      return;
+    }
+
+    try {
+      // iOS Safari requires these specific constraints
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Prefer webm/opus but fall back to whatever is supported (needed for Safari)
+      const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find(
+        m => MediaRecorder.isTypeSupported(m)
+      ) || '';
+
+      mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        const type = mediaRecorder.mimeType || 'audio/webm';
+        audioBlob = new Blob(audioChunks, { type });
+        const url = URL.createObjectURL(audioBlob);
+        const preview = document.getElementById('audioPreview');
+        preview.src = url;
+        preview.classList.add('visible');
+        document.getElementById('sendVoiceBtn').style.display = 'block';
+        setRecordingState(false);
+      };
+
+      mediaRecorder.start();
+      setRecordingState(true);
+    } catch(e) {
+      alert('Microphone access denied: ' + e.message);
+    }
+  }
+
+  function setRecordingState(recording) {
+    const btn = document.getElementById('micBtn');
+    const label = document.getElementById('recLabel');
+    btn.classList.toggle('recording', recording);
+    label.classList.toggle('recording', recording);
+    btn.textContent = recording ? '⏹️' : '🎙️';
+  }
+
+  async function sendVoice() {
+    if (!audioBlob) return;
+    const btn = document.getElementById('sendVoiceBtn');
+    const resp = document.getElementById('voiceResponse');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Sending…';
+    resp.className = 'response-box';
+    resp.textContent = 'Uploading and transcribing…';
+
+    try {
+      const ext = audioBlob.type.includes('mp4') ? 'm4a' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm';
+      const fd = new FormData();
+      fd.append('file', audioBlob, `recording.${ext}`);
+
+      const r = await fetch('/voice', { method: 'POST', body: fd });
+      const data = await r.json();
+
+      if (!r.ok) throw new Error(data.error || 'Upload failed');
+
+      const badge = document.getElementById('voiceBadge');
+      badge.className = 'badge ' + (data.pipelineGenerated ? 'success' : 'info');
+      badge.textContent = data.pipelineGenerated ? '✓ Pipeline Started' : 'Processed';
+
+      let out = `📝 Transcript:\n${data.transcript}`;
+      if (data.runId) out += `\n\n🚀 Run ID: ${data.runId}`;
+      resp.className = 'response-box';
+      resp.textContent = out;
+      // Save runId for Runs tab
+      if (data.runId) document.getElementById('runId').value = data.runId;
+    } catch(e) {
+      resp.className = 'response-box';
+      resp.textContent = '❌ Error: ' + e.message;
+      document.getElementById('voiceBadge').className = 'badge error';
+      document.getElementById('voiceBadge').textContent = 'Error';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = 'Send to Pipeline ↗';
+    }
+  }
+
+  // ── Text Interaction ──────────────────────────────────────────────────────
+  async function sendText() {
+    const text = document.getElementById('textInput').value.trim();
+    const sessionId = document.getElementById('sessionId').value.trim();
+    const resp = document.getElementById('textResponse');
+    const badge = document.getElementById('textBadge');
+    if (!text) return;
+
+    resp.className = 'response-box';
+    resp.innerHTML = '<span class="spinner"></span>Sending…';
+
+    try {
+      const body = { text };
+      if (sessionId) body.sessionId = sessionId;
+
+      const r = await fetch('/interactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Request failed');
+
+      badge.className = 'badge success';
+      badge.textContent = '✓ Enqueued';
+      resp.textContent = data.enqueued
+        ? 'Request enqueued ✓ — The orchestration worker will process it. Check worker logs for output.'
+        : JSON.stringify(data, null, 2);
+    } catch(e) {
+      badge.className = 'badge error';
+      badge.textContent = 'Error';
+      resp.textContent = '❌ ' + e.message;
+    }
+  }
+
+  // ── Nodes ─────────────────────────────────────────────────────────────────
+  async function refreshNodes() {
+    const el = document.getElementById('nodeList');
+    el.innerHTML = '<div class="node-empty">Loading…</div>';
+    try {
+      const r = await fetch('/nodes');
+      const nodes = await r.json();
+      if (!nodes.length) { el.innerHTML = '<div class="node-empty">No nodes registered.</div>'; return; }
+      el.innerHTML = nodes.map(n => `
+        <div class="node-item">
+          <div class="dot ${n.status === 'ONLINE' ? 'online' : ''}"></div>
+          <span class="node-name">${n.name}</span>
+          <span class="node-caps">${(n.capabilities || []).join(', ')}</span>
+        </div>`).join('');
+    } catch(e) { el.innerHTML = '<div class="node-empty">Failed to load nodes.</div>'; }
+  }
+
+  async function registerNode() {
+    const name = document.getElementById('nodeName').value.trim();
+    const capsRaw = document.getElementById('nodeCaps').value.trim();
+    const result = document.getElementById('nodeRegResult');
+    if (!name) { result.textContent = 'Please enter a node name.'; return; }
+
+    const capabilities = capsRaw ? capsRaw.split(',').map(c => c.trim()).filter(Boolean) : [];
+
+    try {
+      const r = await fetch('/nodes/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, capabilities }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error);
+      result.style.color = 'var(--green)';
+      result.textContent = `✓ Registered! Node ID: ${data.id}`;
+      await refreshNodes();
+    } catch(e) {
+      result.style.color = 'var(--red)';
+      result.textContent = '❌ ' + e.message;
+    }
+  }
+
+  // ── Runs ──────────────────────────────────────────────────────────────────
+  async function fetchRun() {
+    const id = document.getElementById('runId').value.trim();
+    const el = document.getElementById('runDetails');
+    if (!id) return;
+    el.innerHTML = '<span class="spinner"></span>Loading…';
+
+    try {
+      const r = await fetch('/runs/' + encodeURIComponent(id));
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Not found');
+
+      const steps = data.steps || [];
+      const statusIcon = { COMPLETED: '✅', FAILED: '❌', PROCESSING: '⏳', PENDING: '⏸️' };
+      const stepsHtml = steps.map(s => `
+        <div class="step-row">
+          <span class="step-status">${statusIcon[s.status] || '•'}</span>
+          <span style="flex:1"><strong>${s.step?.task || s.stepId}</strong> <span style="color:var(--muted);font-size:12px;">${s.step?.stepType || ''}</span></span>
+          <span style="color:var(--muted);font-size:12px;">${s.status}</span>
+        </div>`).join('');
+
+      el.className = 'response-box';
+      el.innerHTML = `
+        <div style="margin-bottom:10px;">
+          <strong>${data.pipeline?.name || 'Pipeline Run'}</strong>
+          <span class="badge ${data.status === 'COMPLETED' ? 'success' : data.status === 'FAILED' ? 'error' : 'info'}">${data.status}</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">ID: ${data.id}</div>
+        ${stepsHtml || '<div style="color:var(--muted);font-size:13px;">No steps yet.</div>'}
+      `;
+    } catch(e) {
+      el.className = 'response-box';
+      el.textContent = '❌ ' + e.message;
+    }
+  }
+
+  // Handle Enter key on Run ID input
+  document.getElementById('runId').addEventListener('keydown', e => { if (e.key === 'Enter') fetchRun(); });
+  document.getElementById('textInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+  });
+</script>
+</body>
+</html>
