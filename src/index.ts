@@ -8,6 +8,9 @@ async function buildServer() {
     logger: false,
   });
 
+  // Register multipart plugin to safely parse files
+  await app.register(import("@fastify/multipart"));
+
   // Basic health route and main API routes
   const { healthRoutes } = await import("./api/health");
   await healthRoutes(app);

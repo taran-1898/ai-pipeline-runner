@@ -15,6 +15,7 @@ export interface PipelineDefinitionStep {
   schema?: unknown;
   dependsOn?: string[];
   dependsOnStepId?: string;
+  requiredCapability?: string;
 }
 
 export interface PipelineDefinition {

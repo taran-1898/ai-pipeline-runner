@@ -27,6 +27,7 @@ model PipelineStep {
   schema        Json?
   dependsOn     String[] @default([])
   dependsOnStepId String?
+  requiredCapability String?
 
   runSteps RunStep[]
 

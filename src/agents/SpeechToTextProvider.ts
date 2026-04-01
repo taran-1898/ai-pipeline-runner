@@ -9,5 +9,10 @@ export interface SpeechToTextProvider {
    * might accept streams or file buffers instead.
    */
   transcribe(audioUrlOrPath: string): Promise<string>;
+
+  /**
+   * Transcribes audio directly from a buffer.
+   */
+  transcribeBuffer?(audioBuffer: Buffer, mimeType: string): Promise<string>;
 }
 

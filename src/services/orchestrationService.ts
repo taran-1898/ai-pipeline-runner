@@ -29,7 +29,6 @@ export class OrchestrationService {
   private readonly router = new ModelRouter();
   private readonly whisper = new WhisperProvider();
   private readonly conversation = new ConversationService();
-  private readonly conversation = new ConversationService();
 
   // Registry of additional AI tools for non-LLM capabilities.
   private readonly tools = [
@@ -81,6 +80,14 @@ export class OrchestrationService {
         kind: "tool",
         toolName: "gamma",
         reason: "User wants slides/presentation; Gamma is targeted at that.",
+      };
+    }
+
+    if (/(cursor|antigravity|scaffold|ide)/.test(lower)) {
+      return {
+        kind: "tool",
+        toolName: "cursor",
+        reason: "User explicitly mentioned Cursor or Antigravity; routing to specialized workspace tool.",
       };
     }
 
@@ -207,6 +214,29 @@ export class OrchestrationService {
   async appendConversationTurn(sessionId: string, userText: string, assistantText: string) {
     await this.conversation.appendMessage(sessionId, "user", userText);
     await this.conversation.appendMessage(sessionId, "assistant", assistantText);
+  }
+
+  /**
+   * High-level handler for voice interactions.
+   * It takes a generated transcript and intelligently routes it.
+   */
+  async handleVoiceCommand(
+    transcript: string,
+    planningService: any,
+    runService: any
+  ): Promise<{ pipelineGenerated: boolean; runId: string | null }> {
+    const decision = this.decideNextAction(transcript);
+
+    if (decision.kind === "pipeline") {
+      logger.info("Voice command triggered pipeline creation", { transcriptSnippet: transcript.slice(0, 100) });
+      const pipeline = await planningService.planAndCreate(transcript);
+      const run = await runService.startRun(pipeline.id, { userText: transcript });
+      return { pipelineGenerated: true, runId: run.id };
+    }
+
+    // Default fallback if not a complex pipeline.
+    logger.info("Voice command processed as plain interaction", { transcriptSnippet: transcript.slice(0, 100) });
+    return { pipelineGenerated: false, runId: null };
   }
 }
 

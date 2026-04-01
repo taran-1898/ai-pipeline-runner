@@ -6,6 +6,9 @@ import { logger } from "../utils/logger";
 import { StepType } from "../models/pipeline";
 import { ToolRouter } from "../services/toolRouter";
 import { StorageService } from "../services/storageService";
+import { Queue, QueueEvents } from "bullmq";
+import { connection } from "../config/queue";
+import { nodeRegistry } from "../services/nodeRegistryService";
 
 const modelRouter = new ModelRouter();
 const toolRouter = new ToolRouter({ modelRouter });
@@ -151,7 +154,41 @@ export class PipelineExecutor {
           let artifactType: "text" | "file" | "image" | "audio" | "video" = "text";
 
           try {
-            if (stepType === "tool") {
+            const requiredCap = (step as any).requiredCapability as string | undefined;
+
+            if (requiredCap) {
+              const node = nodeRegistry.getCapableNode(requiredCap);
+              if (!node) {
+                throw new Error(`No active nodes available with capability: ${requiredCap}`);
+              }
+              const queueName = `pipeline:node:${node.id}`;
+              const remoteQueue = new Queue(queueName, { connection });
+              const queueEvents = new QueueEvents(queueName, { connection });
+              
+              const startTimeout = setTimeout(() => {
+                logger.info("Remote node job taking too long; verify node health: " + node.id + " " + stepId);
+              }, 30000);
+
+              try {
+                const job = await remoteQueue.add("remote-step", {
+                  runId,
+                  stepId: step.id,
+                  prompt,
+                  input,
+                  stepType,
+                  schema: (step as any).schema
+                });
+
+                const remoteResult = await job.waitUntilFinished(queueEvents);
+                response = remoteResult.response;
+                modelOrToolUsed = `node:${node.id} (${node.name})`;
+                artifactType = remoteResult.artifactType || "text";
+              } finally {
+                clearTimeout(startTimeout);
+                await queueEvents.close();
+                await remoteQueue.close();
+              }
+            } else if (stepType === "tool") {
               const toolResult = await toolRouter.route(prompt);
               response = toolResult.response;
               modelOrToolUsed = toolResult.name;

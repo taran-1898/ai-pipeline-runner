@@ -1,0 +1,324 @@
+{
+	"info": {
+		"_postman_id": "2af7509d-021b-4d7a-8f85-78e752960682",
+		"name": "AI Pipeline Runner",
+		"description": "Collection for testing the Distributed AI Pipeline Runner system.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Orchestration",
+			"item": [
+				{
+					"name": "Interaction (Text)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"I want to build a fitness app with react\",\n    \"sessionId\": \"session-123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/interactions",
+							"host": [
+								"http://localhost:3000"
+							],
+							"path": [
+								"interactions"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Voice Interaction (Multipart)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "audio",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/voice",
+							"host": [
+								"http://localhost:3000"
+							],
+							"path": [
+								"voice"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Pipelines",
+			"item": [
+				{
+					"name": "Plan Pipeline",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"task\": \"Build a microservice for image processing\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/pipelines/plan",
+							"host": [
+								"http://localhost:3000"
+							],
+							"path": [
+								"pipelines",
+								"plan"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Pipelines",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/pipelines",
+							"host": [
+								"http://localhost:3000"
+							],
+							"path": [
+								"pipelines"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Runs",
+			"item": [
+				{
+					"name": "Start Pipeline Run",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"input\": {\n        \"userText\": \"Run my custom pipeline\"\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/pipelines/:id/run",
+							"host": [
+								"http://localhost:3000"
+							],
+							"path": [
+								"pipelines",
+								":id",
+								"run"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "pipeline-id-here"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Run Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/runs/:id",
+							"host": [
+								"http://localhost:3000"
+							],
+							"path": [
+								"runs",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "run-id-here"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Run Artifacts",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/runs/:id/artifacts",
+							"host": [
+								"http://localhost:3000"
+							],
+							"path": [
+								"runs",
+								":id",
+								"artifacts"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "run-id-here"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Nodes",
+			"item": [
+				{
+					"name": "Register Node",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"id\": \"node-1\",\n    \"name\": \"My Local Worker\",\n    \"capabilities\": [\"gpu\", \"whisper\"]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/nodes/register",
+							"host": [
+								"http://localhost:3000"
+							],
+							"path": [
+								"nodes",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Node Heartbeat",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/nodes/:id/heartbeat",
+							"host": [
+								"http://localhost:3000"
+							],
+							"path": [
+								"nodes",
+								":id",
+								"heartbeat"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "node-1"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Active Nodes",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/nodes",
+							"host": [
+								"http://localhost:3000"
+							],
+							"path": [
+								"nodes"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Node Status Counts",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/nodes/status",
+							"host": [
+								"http://localhost:3000"
+							],
+							"path": [
+								"nodes",
+								"status"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000",
+			"type": "string"
+		}
+	]
+}

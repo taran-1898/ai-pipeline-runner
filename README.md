@@ -1,6 +1,8 @@
-## AI Pipeline Runner (MVP)
+## AI Pipeline Runner
 
-Backend service for executing multi-step AI pipelines across multiple LLM providers with execution tracing.
+Backend service for dynamically orchestrating multi-step AI pipelines across numerous internal features, remote nodes over Tailscale, LLMs, and Voice commands. 
+
+This project aims to create a unified flow for product managers and developers to dictate inputs (via text or voice), which automatically decompose into actionable tasks: generating PRDs, crafting video samples, writing code, or generating architectural plans all from a single entry point.
 
 ### Tech Stack
 
@@ -8,7 +10,9 @@ Backend service for executing multi-step AI pipelines across multiple LLM provid
 - **Web Framework**: Fastify
 - **Database**: PostgreSQL + Prisma
 - **Queue**: Redis + BullMQ
-- **LLMs**: OpenAI, Anthropic, OpenRouter (stubbed adapters)
+- **Nodes/Execution**: Distributed Workers (e.g., via Tailscale) + Web/API execution
+- **LLMs & Tools**: OpenAI, Anthropic, Gemini, OpenRouter, ElevenLabs (TTS streaming), Perplexity (Deep Search), and deep Cursor IDE local workspace hydration logic.
+- **Storage**: Cloudflare R2 for artifacts and persistent audio storage
 
 ### Setup
 
@@ -28,6 +32,11 @@ REDIS_URL="redis://localhost:6379"
 OPENAI_API_KEY="your-openai-key"
 ANTHROPIC_API_KEY="your-anthropic-key"
 OPENROUTER_API_KEY="your-openrouter-key"
+WHISPER_API_KEY="your-openai-key" # For audio transcribing
+R2_ACCOUNT_ID="your-r2-account-id"
+R2_BUCKET="your-r2-bucket"
+R2_ACCESS_KEY_ID="your-access-key"
+R2_SECRET_ACCESS_KEY="your-secret-key"
 PORT=3000
 ```
 
@@ -38,30 +47,40 @@ npx prisma migrate dev --name init
 npx prisma generate
 ```
 
-4. **Seed example pipeline (optional)**
-
-```bash
-npx tsx src/example/seedExamplePipeline.ts
-```
-
-5. **Run the API server**
+4. **Run the API server**
 
 ```bash
 npm run dev
 ```
 
-6. **Run the worker**
+5. **Run the core pipeline worker**
 
 ```bash
 npm run worker
 ```
 
+6. **(Optional) Run Remote Nodes**
+
+If you have a laptop, GPU desktop, or cloud VM connected via Tailscale that you want to lend to the pipeline cluster:
+```bash
+NODE_NAME="my-home-pc" NODE_CAPABILITIES="gpu,video_render" npx tsx src/workers/remoteNodeWorker.ts
+```
+
 ### Core API Endpoints
 
-- **POST** `/pipelines` – create a pipeline (you can now attach per-step JSON Schemas and dependency information)
-- **POST** `/pipelines/plan` – generate and persist a pipeline from a natural-language task
-- **GET** `/pipelines` – list pipelines
-- **POST** `/pipelines/:id/run` – start a pipeline run (enqueues a job into the DAG executor)
-- **GET** `/runs/:id` – get run status and execution trace (with steps, including per-step status/timing/validation)
+**Orchestration & Interactions**
+- **POST** `/interactions` – Accepts text or path to an audio file. Asynchronously plans and executes commands.
+- **POST** `/voice` – Advanced voice entry point. Accepts `multipart/form-data` with an `audio` file payload (perfect for mobile web/Safari). Transcribes the voice request using OpenAI Whisper, conditionally generates a rigorous pipeline map, and dispatches the execution while saving the raw input to R2 storage securely.
 
-##This is something I am working on in my free time for my own amusement and eventually my own personal use. The end goal is to create a flow for product people to create PRDs/video samples/write code/Plan/use it as an Ideas board, all while using text or voice inputs at a single entrypoint. Trying to increase productivity on the go by introducing things like Tailscale into the mix. I am open to new ideas and inputs.
+**Pipelines & Operations**
+- **POST** `/pipelines` – create a custom pipeline manually. Attach JSON schemas, dynamic capability requirements (e.g., `"gpu"`), and dependent execution traces.
+- **POST** `/pipelines/plan` – auto-generate a pipeline trace securely from a prompt.
+- **GET** `/pipelines` – list available pipeline artifacts.
+- **POST** `/pipelines/:id/run` – starts a specific pipeline task locally or farms it to connected remote queue workers.
+- **GET** `/runs/:id` – stream run status or view deep execution topologies and artifact bindings.
+
+**Network / Fleet Operations**
+- **POST** `/nodes/register` – Remote worker nodes hit this endpoint on boot to broadcast their hardware capabilities (GPU power, audio processing tech, Whisper runtime bindings, etc.).
+- **POST** `/nodes/:id/heartbeat` – Allows a node to signal it is alive and receptive.
+- **GET** `/nodes` – View the live node cluster footprint.
+- **GET** `/nodes/status` – View online/offline status counts across the fleet.
